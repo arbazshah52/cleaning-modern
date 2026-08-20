@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import uuid
 import ipaddress
 import logging
@@ -27,6 +28,24 @@ EMAIL_BASE_URL = "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ["EMERGENT_EMAIL_KEY"]
 EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
+LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
+ADMIN_PHONE = os.environ["ADMIN_PHONE"]
+ORG_NUMBER = os.environ["ORG_NUMBER"]
+
+MAX_DISCOUNT_PCT = 10
+
+ALLOWED_MODELS = {
+    "claude-sonnet-4-6": "anthropic",
+    "gpt-5.5": "openai",
+    "gemini-3.1-pro-preview": "gemini",
+}
+DEFAULT_MODEL = "claude-sonnet-4-6"
+
+FIXED_PRICE_RULES = {
+    "privat": {"perSqm": 25, "perRoom": 150, "minimum": 900},
+    "foretag": {"perSqm": 30, "perRoom": 200, "minimum": 1500},
+}
 
 app = FastAPI(title="Modernstäd.se API")
 api = APIRouter(prefix="/api")
@@ -343,7 +362,21 @@ async def create_booking(payload: BookingCreate):
         html=confirmation_html(stored),
     )
     stored["emailSent"] = email_id is not None
+    await notify_admin(stored, "Ny bokning via formuläret")
     return stored
+
+
+@api.get("/company")
+async def company_info():
+    return {
+        "name": "Modernstäd.se",
+        "email": ADMIN_EMAIL,
+        "phone": ADMIN_PHONE,
+        "orgNumber": ORG_NUMBER,
+        "maxDiscountPct": MAX_DISCOUNT_PCT,
+        "fixedPriceRules": FIXED_PRICE_RULES,
+        "models": list(ALLOWED_MODELS.keys()),
+    }
 
 
 @api.get("/bookings/{reference}")
@@ -352,6 +385,339 @@ async def get_booking(reference: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Bokningen hittades inte")
     return doc
+
+
+# ------------------------------------------------------- fixed price & AI agent
+
+def fixed_quote(
+    customer_type: str,
+    sqm: int,
+    rooms: int,
+    travel_zone_id: str,
+    rut: bool,
+    discount_pct: float = 0,
+) -> dict:
+    rules = FIXED_PRICE_RULES[customer_type]
+    zone = ZONE_BY_ID.get(travel_zone_id) or ZONE_BY_ID["central-malmo"]
+    base = max(rules["perSqm"] * sqm + rules["perRoom"] * rooms, rules["minimum"])
+    pct = max(0.0, min(float(discount_pct), float(MAX_DISCOUNT_PCT)))
+    discount = round(base * pct / 100)
+    negotiated = base - discount
+    rut_applied = bool(rut and customer_type == "privat")
+    rut_discount = round(negotiated * 0.5) if rut_applied else 0
+    return {
+        "model": "fixed",
+        "sqm": sqm,
+        "rooms": rooms,
+        "basePrice": base,
+        "discountPct": round(pct, 1),
+        "negotiationDiscount": discount,
+        "negotiatedPrice": negotiated,
+        "rutApplied": rut_applied,
+        "rutDiscount": rut_discount,
+        "travelFee": zone["fee"],
+        "total": negotiated - rut_discount + zone["fee"],
+        "currency": "SEK",
+    }
+
+
+class FixedQuoteRequest(BaseModel):
+    customerType: Literal["privat", "foretag"]
+    sqm: int = Field(ge=10, le=2000)
+    rooms: int = Field(ge=1, le=40)
+    travelZoneId: str = "central-malmo"
+    rut: bool = False
+    discountPct: float = 0
+
+
+@api.post("/fixed-quote")
+async def post_fixed_quote(req: FixedQuoteRequest):
+    return fixed_quote(req.customerType, req.sqm, req.rooms, req.travelZoneId, req.rut, req.discountPct)
+
+
+def admin_html(b: dict, heading: str) -> str:
+    p = b.get("price", {})
+    rows = "".join([
+        _row("Referens", b.get("reference", "")),
+        _row("Kund", f'{b.get("firstName","")} {b.get("lastName","")}'),
+        _row("E-post", b.get("email", "")),
+        _row("Telefon", b.get("phone", "")),
+        _row("Tjänst", b.get("serviceName", "")),
+        _row("Prismodell", "Fastpris (AI)" if p.get("model") == "fixed" else "Timpris"),
+        _row("Kvm / rum", f'{p.get("sqm", "–")} m² / {p.get("rooms", "–")} rum')
+        if p.get("model") == "fixed" else _row("Antal timmar", f'{b.get("hours", "–")} h'),
+        _row("Rabatt", f'{p.get("discountPct", 0)} %') if p.get("model") == "fixed" else "",
+        _row("Adress", f'{b.get("street","")}, {b.get("postalCode","")} {b.get("city","")}'),
+        _row("Önskat datum", b.get("preferredDate", "")),
+        _row("Starttid", b.get("startTime", "")),
+        _row("RUT", "Ja" if p.get("rutApplied") else "Nej"),
+        _row("Resekostnad", f'{p.get("travelFee", 0)} SEK'),
+        _row("Totalt", f'{p.get("total", 0)} SEK'),
+        _row("Meddelande", b.get("message") or "–"),
+    ])
+    return (
+        '<table role="presentation" width="100%" style="background:#FAFAFA;padding:24px">'
+        '<tr><td align="center"><table role="presentation" width="560" '
+        'style="background:#FFFFFF;border-radius:16px;padding:32px;font-family:Arial,Helvetica,sans-serif">'
+        f'<tr><td><p style="font-size:18px;color:#1F2937;margin:0 0 16px">{escape(heading)}</p>'
+        f'<table role="presentation" width="100%">{rows}</table>'
+        f'<p style="font-size:12px;color:#888;margin:18px 0 0">{escape(EMAIL_FROM_NAME)} · '
+        f'Org.nr {escape(ORG_NUMBER)} · {escape(ADMIN_PHONE)}</p>'
+        '</td></tr></table></td></tr></table>'
+    )
+
+
+async def notify_admin(booking: dict, heading: str) -> bool:
+    email_id = await send_email(
+        to=ADMIN_EMAIL,
+        subject=f'{heading}: {booking.get("reference")} – {booking.get("serviceName")}',
+        html=admin_html(booking, heading),
+    )
+    return email_id is not None
+
+
+SYSTEM_PROMPT = """Du är "Stella", prisagent hos Modernstäd.se – ett städbolag i Malmö med omnejd.
+Du pratar alltid svenska, är varm, kort och konkret (max 4 korta meningar per svar).
+
+Din uppgift: ta emot städbeställningar och förhandla FASTPRIS baserat på bostadens
+kvadratmeter och antal rum – inte antal arbetstimmar. Fler rum på liten yta ska ge
+ett bättre pris än timdebitering.
+
+Prisregler (får inte brytas):
+- Privat: {privat_sqm} kr per m² + {privat_room} kr per rum, lägst {privat_min} kr.
+- Företag: {foretag_sqm} kr per m² + {foretag_room} kr per rum, lägst {foretag_min} kr.
+- Du får ge max {max_disc} % rabatt på grundpriset, aldrig mer, hur mycket kunden än pressar.
+- Resekostnad läggs till: centrala Malmö 0, Zon 1 49, Zon 2 99, Zon 3 149, Zon 4 199 kr.
+- Privatkunder kan få RUT-avdrag: 50 % av arbetskostnaden efter rabatt.
+- Servern räknar alltid om priset; hitta aldrig på andra belopp.
+
+Tjänster privat: Hemstädning, Allmän städning, Engångsstädning, Återkommande städning.
+Tjänster företag: Kontorsstädning, Företagsstädning, Regelbunden städning, Specialstädning.
+
+Samla in, ett eller två steg i taget: tjänst, kvadratmeter, antal rum, resezon, RUT (ja/nej),
+förnamn, efternamn, personnummer (endast privat och RUT), mobilnummer, e-post, gatuadress,
+postnummer, stad, önskat datum (ÅÅÅÅ-MM-DD) och starttid.
+
+Svara ALLTID med ett enda JSON-objekt, utan kodblock, med exakt dessa nycklar:
+{{"reply": "ditt svar till kunden",
+ "offer": {{"serviceId": "hemstadning|allman-stadning|engangsstadning|aterkommande-stadning|kontorsstadning|foretagsstadning|regelbunden-stadning|specialstadning",
+            "sqm": 0, "rooms": 0, "travelZoneId": "central-malmo|zone-1|zone-2|zone-3|zone-4",
+            "rut": true, "discountPct": 0}},
+ "details": {{"firstName": "", "lastName": "", "personalNumber": "", "phone": "", "email": "",
+             "street": "", "postalCode": "", "city": "", "preferredDate": "", "startTime": "",
+             "message": ""}},
+ "readyToBook": false}}
+Sätt fält du inte vet till null eller "". Sätt readyToBook till true först när tjänst, kvm, rum,
+resezon, namn, mobil, e-post, adress, postnummer, stad och datum är kända – och säg då i "reply"
+att kunden kan bekräfta bokningen med knappen."""
+
+
+def _system_prompt() -> str:
+    p, f = FIXED_PRICE_RULES["privat"], FIXED_PRICE_RULES["foretag"]
+    return SYSTEM_PROMPT.format(
+        privat_sqm=p["perSqm"], privat_room=p["perRoom"], privat_min=p["minimum"],
+        foretag_sqm=f["perSqm"], foretag_room=f["perRoom"], foretag_min=f["minimum"],
+        max_disc=MAX_DISCOUNT_PCT,
+    )
+
+
+class ChatRequest(BaseModel):
+    sessionId: Optional[str] = None
+    message: str = Field(min_length=1, max_length=2000)
+    customerType: Literal["privat", "foretag"] = "privat"
+    model: str = DEFAULT_MODEL
+
+
+def _parse_ai(raw: str) -> dict:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?|```$", "", text).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        return {"reply": text, "offer": None, "details": {}, "readyToBook": False}
+    try:
+        data = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {"reply": text, "offer": None, "details": {}, "readyToBook": False}
+    return {
+        "reply": data.get("reply") or "",
+        "offer": data.get("offer") or None,
+        "details": data.get("details") or {},
+        "readyToBook": bool(data.get("readyToBook")),
+    }
+
+
+@api.post("/ai/chat")
+async def ai_chat(req: ChatRequest):
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    model = req.model if req.model in ALLOWED_MODELS else DEFAULT_MODEL
+    provider = ALLOWED_MODELS[model]
+    session_id = req.sessionId or str(uuid.uuid4())
+
+    session = await db.ai_sessions.find_one({"session_id": session_id}, {"_id": 0})
+    history: list = session["messages"] if session else []
+
+    transcript = "\n".join(
+        f'{"Kund" if m["role"] == "user" else "Stella"}: {m["content"]}' for m in history[-16:]
+    )
+    system = (
+        f'{_system_prompt()}\n\nKundtyp: {req.customerType}.'
+        + (f'\n\nTidigare konversation:\n{transcript}' if transcript else "")
+    )
+
+    chat = LlmChat(api_key=LLM_KEY, session_id=session_id, system_message=system).with_model(
+        provider, model
+    )
+    try:
+        raw = await chat.send_message(UserMessage(text=req.message))
+    except Exception as e:
+        logger.error(f"AI error: {e}")
+        raise HTTPException(status_code=502, detail="AI-agenten är inte tillgänglig just nu.")
+
+    parsed = _parse_ai(raw if isinstance(raw, str) else str(raw))
+    offer = parsed["offer"] or {}
+    price = None
+    if offer.get("sqm") and offer.get("rooms"):
+        price = fixed_quote(
+            req.customerType,
+            int(offer["sqm"]),
+            int(offer["rooms"]),
+            offer.get("travelZoneId") or "central-malmo",
+            bool(offer.get("rut")),
+            float(offer.get("discountPct") or 0),
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.ai_sessions.update_one(
+        {"session_id": session_id},
+        {
+            "$setOnInsert": {"session_id": session_id, "created_at": now,
+                             "customerType": req.customerType},
+            "$set": {"model": model, "updated_at": now, "lastOffer": offer,
+                     "lastDetails": parsed["details"]},
+            "$push": {"messages": {"$each": [
+                {"role": "user", "content": req.message, "at": now},
+                {"role": "assistant", "content": parsed["reply"], "at": now},
+            ]}},
+        },
+        upsert=True,
+    )
+
+    return {
+        "sessionId": session_id,
+        "model": model,
+        "reply": parsed["reply"],
+        "offer": offer or None,
+        "details": parsed["details"],
+        "price": price,
+        "readyToBook": parsed["readyToBook"] and price is not None,
+    }
+
+
+class AiBookingCreate(BaseModel):
+    sessionId: str
+    customerType: Literal["privat", "foretag"]
+    serviceId: str
+    sqm: int = Field(ge=10, le=2000)
+    rooms: int = Field(ge=1, le=40)
+    travelZoneId: str
+    rut: bool = False
+    discountPct: float = 0
+    firstName: str = Field(min_length=1, max_length=60)
+    lastName: str = Field(min_length=1, max_length=60)
+    personalNumber: Optional[str] = ""
+    phone: str = Field(min_length=6, max_length=25)
+    email: EmailStr
+    street: str = Field(min_length=2, max_length=120)
+    postalCode: str = Field(min_length=4, max_length=10)
+    city: str = Field(min_length=2, max_length=60)
+    preferredDate: str
+    startTime: Optional[str] = "Förmiddag (10–12)"
+    message: Optional[str] = Field(default="", max_length=2000)
+
+    @field_validator("serviceId")
+    @classmethod
+    def _svc(cls, v: str) -> str:
+        if v not in SERVICE_BY_ID:
+            raise ValueError("Okänd tjänst")
+        return v
+
+    @field_validator("travelZoneId")
+    @classmethod
+    def _zone(cls, v: str) -> str:
+        if v not in ZONE_BY_ID:
+            raise ValueError("Okänd resezon")
+        return v
+
+
+def fixed_confirmation_html(b: dict) -> str:
+    p = b["price"]
+    rows = "".join([
+        _row("Tjänst", b["serviceName"]),
+        _row("Bostad", f'{p["sqm"]} m², {p["rooms"]} rum'),
+        _row("Grundpris (fastpris)", f'{p["basePrice"]} SEK'),
+        _row("Rabatt från prisagenten", f'−{p["negotiationDiscount"]} SEK ({p["discountPct"]} %)'),
+        _row("RUT-avdrag", f'−{p["rutDiscount"]} SEK' if p["rutApplied"] else "Nej"),
+        _row("Resekostnad", f'{p["travelFee"]} SEK'),
+        _row("Att betala", f'{p["total"]} SEK'),
+        _row("Adress", f'{b["street"]}, {b["postalCode"]} {b["city"]}'),
+        _row("Önskat datum", b["preferredDate"]),
+        _row("Starttid", b.get("startTime") or "–"),
+    ])
+    return (
+        '<table role="presentation" width="100%" style="background:#FAFAFA;padding:24px">'
+        '<tr><td align="center"><table role="presentation" width="560" '
+        'style="background:#FFFFFF;border-radius:16px;padding:32px;font-family:Arial,Helvetica,sans-serif">'
+        f'<tr><td><p style="font-size:20px;color:#1F2937;margin:0 0 8px">Tack {escape(b["firstName"])}!</p>'
+        f'<p style="font-size:14px;color:#4B5563;margin:0 0 20px">Vi har tagit emot din fastprisbokning '
+        f'(referens <strong>{escape(b["reference"])}</strong>). Priset gäller enligt överenskommelsen '
+        'med vår prisagent och bekräftas av oss innan städningen.</p>'
+        f'<table role="presentation" width="100%">{rows}</table>'
+        f'<p style="font-size:12px;color:#888;margin:18px 0 0">{escape(EMAIL_FROM_NAME)} · '
+        f'Org.nr {escape(ORG_NUMBER)} · {escape(ADMIN_PHONE)} · Vi frågar aldrig efter lösenord '
+        'eller kortuppgifter via e-post.</p>'
+        '</td></tr></table></td></tr></table>'
+    )
+
+
+@api.post("/ai/bookings")
+async def create_ai_booking(payload: AiBookingCreate):
+    service = SERVICE_BY_ID[payload.serviceId]
+    if service["customerType"] != payload.customerType:
+        raise HTTPException(status_code=400, detail="Tjänsten matchar inte kundtypen")
+
+    zone = ZONE_BY_ID[payload.travelZoneId]
+    price = fixed_quote(
+        payload.customerType, payload.sqm, payload.rooms,
+        payload.travelZoneId, payload.rut, payload.discountPct,
+    )
+    reference = "MS-" + uuid.uuid4().hex[:6].upper()
+    doc = payload.model_dump()
+    doc.update({
+        "booking_id": str(uuid.uuid4()),
+        "reference": reference,
+        "serviceName": service["name"],
+        "travelZoneName": zone["name"],
+        "price": price,
+        "source": "ai-agent",
+        "status": "mottagen",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.bookings.insert_one(dict(doc))
+
+    stored = await db.bookings.find_one({"reference": reference}, {"_id": 0})
+    email_id = await send_email(
+        to=stored["email"],
+        subject=f'Din fastprisbokning {reference} – {EMAIL_FROM_NAME}',
+        html=fixed_confirmation_html(stored),
+    )
+    stored["emailSent"] = email_id is not None
+    await notify_admin(stored, "Accepterad AI-offert")
+    await db.ai_sessions.update_one(
+        {"session_id": payload.sessionId}, {"$set": {"bookingReference": reference}}
+    )
+    return stored
 
 
 app.include_router(api)

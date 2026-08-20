@@ -35,3 +35,16 @@ FastAPI + MongoDB (backend, /api prefix) + Emergent-managed Resend for confirmat
 - P1: Adminvy för bokningar, server-side regex för personnummer/postnummer/telefon.
 - P1: Bokningsuppslag via referens i UI, notismail till Modernstäd.
 - P2: Priser/tjänster i databasen med redigering, checklistor per tjänst, kalender med lediga tider.
+
+## Implemented – AI-prisagent (2026-06)
+- AI-agenten "Stella" (Claude Sonnet 4.6 / gpt-5.5 / Gemini 3.1 Pro via Emergent Universal Key,
+  valbar i chatten) tar emot beställningar och förhandlar FASTPRIS på kvm + antal rum i stället för
+  arbetstimmar. Max 10 % rabatt, alltid omräknat serverside.
+- Fastprisregler: privat 25 kr/m² + 150 kr/rum (min 900), företag 30 kr/m² + 200 kr/rum (min 1500),
+  plus resezonsavgift, RUT 50 % för privat.
+- Chatten skapar bokningen direkt (POST /api/ai/bookings, source "ai-agent") med
+  kundbekräftelse via e-post.
+- Adminnotis till arbazshah11@gmail.com vid både formulärbokning och accepterad AI-offert.
+- Företagsuppgifter i footern: arbazshah11@gmail.com, 0736200637, Org.nr 559391-4392.
+- Nya endpoints: GET /api/company, POST /api/fixed-quote, POST /api/ai/chat, POST /api/ai/bookings.
+- QA: 24/24 nya backendtester + 16/16 regression, hela AI-flödet i UI och mobil 390px – allt grönt.

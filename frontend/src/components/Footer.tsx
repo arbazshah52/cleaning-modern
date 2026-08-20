@@ -1,4 +1,4 @@
-import { Mail, Phone, MapPin } from 'lucide-react';
+import { Mail, Phone, MapPin, Building2 } from 'lucide-react';
 
 export default function Footer() {
   return (
@@ -27,16 +27,19 @@ export default function Footer() {
             Kontakt
           </p>
           <p className="flex items-center gap-2">
-            <Mail className="h-4 w-4 text-sky" /> info@modernstad.se
+            <Mail className="h-4 w-4 text-sky" /> arbazshah11@gmail.com
           </p>
           <p className="mt-2 flex items-center gap-2">
-            <Phone className="h-4 w-4 text-sky" /> 040 – 123 45 67
+            <Phone className="h-4 w-4 text-sky" /> 0736200637
+          </p>
+          <p className="mt-2 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-sky" /> Org.nr 559391-4392
           </p>
         </div>
       </div>
       <div className="border-t border-line px-5 py-5 text-center text-xs text-muted lg:px-10">
-        © {new Date().getFullYear()} Modernstäd.se – Alla priser inkl. moms. Villkor och
-        integritetspolicy gäller.
+        © {new Date().getFullYear()} Modernstäd.se – Org.nr 559391-4392 · arbazshah11@gmail.com ·
+        0736200637 · Alla priser inkl. moms. Villkor och integritetspolicy gäller.
       </div>
     </footer>
   );

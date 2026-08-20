@@ -1,0 +1,29 @@
+{
+  "summary": "Full backend + frontend test of the AI price agent (Stella) feature on Modernstäd.se. Backend: 24/24 pytest cases pass. Covered: GET /api/company (admin email/phone/orgNumber/maxDiscountPct=10/fixed rules/3 models); POST /api/fixed-quote (privat 25/m² + 150/rum min 900, foretag 30/m² + 200/rum min 1500, minimum-hit case, discountPct clamp from 25 -> 10, RUT halves negotiated for privat only, travel zone fee added); POST /api/ai/chat parametrized across all 3 allowed models (claude-sonnet-4-6, gpt-5.5, gemini-3.1-pro-preview) verifies Swedish reply + sessionId + offer + server-computed fixed price and 2-message context retention (sqm/rooms remembered); guardrail test proves server clamps discountPct <= 10 even when user demands 50%; POST /api/ai/bookings creates fixed-price booking (source=ai-agent, MS- reference, price.model=fixed, emailSent=true), retrievable via GET /api/bookings/{ref}, discountPct=40 clamped to 10 when stored, rejects invalid email/unknown service/unknown zone/sqm-out-of-range/rooms-out-of-range/customerType mismatch. Regression: legacy POST /api/bookings still works. Frontend: floating ai-agent-toggle opens ai-agent-panel; sending 'Hej, 3 rum och 72 kvm hemstädning i centrala Malmö, med RUT' returns Stella's reply + ai-price-card with basePrice/discount/travel/total (1 125 SEK after 50% RUT); model and customer-type selectors visible; supplying name/phone/email/address/postnummer/stad/date reveals 'Acceptera & boka' button; clicking creates booking MS-985E0E and shows ai-booking-confirmed with reference. Footer shows arbazshah11@gmail.com, 0736200637 and Org.nr 559391-4392 in both the contact column and the bottom line. Mobile 390px: no horizontal overflow, chat input usable.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_ai_agent.py",
+    "/app/backend/tests/test_modernstad_api.py",
+    "/app/test_reports/pytest/ai_agent_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "fixed_quote clamps discount server-side via max(0, min(pct, MAX_DISCOUNT_PCT)) - guardrail correctly enforced; even if LLM hallucinates 25% the server rounds to 10 before storing.",
+    "AiBookingCreate lacks explicit personalNumber format validation, but per spec personalNumber is optional (only privat+RUT should have one). Consider adding a light regex when rut=True and customerType='privat'.",
+    "server.py is now 730 lines - approaching the 700-line guideline. Consider splitting AI-agent routes and email helpers into their own modules in a follow-up refactor.",
+    "AI chat history is stored in db.ai_sessions and replayed as a plain-text transcript in the system prompt (last 16 messages). Works, but for very long chats will consume tokens; a summary-of-earlier-messages pass would be a nice future optimisation.",
+    "Frontend AiPriceAgent.tsx stores 'details' as an accumulating object and merges partial LLM updates (setDetails(d => ({...d, ...data.details}))). Good pattern.",
+    "Public URL used for testing is https://booking-staging-1.preview.emergentagent.com (from frontend/.env), not the URL in the review request. The frontend/.env value is the source of truth per env-var rules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_agent.py (new)"
+  ],
+  "success_rate": {"backend": "100% (24/24 new + 16/16 regression)", "frontend": "100% (all critical AI flows + footer + mobile)"},
+  "test_credentials": "No auth. Customer email delivered@resend.dev per /app/memory/test_credentials.md.",
+  "seed_data_creation": "AI bookings created: MS-985E0E via UI (Testar Testsson, 72 m² / 3 rum / RUT / 1 125 SEK) + several MS-XXXXXX via pytest test_ai_agent (source='ai-agent', privat, delivered@resend.dev).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI tests take ~90 s because of 3-model parametrisation; use generous timeouts. LLM occasionally omits sqm/rooms on the very first turn - test_context_retained sends sqm/rooms in turn 1 and only RUT in turn 2 to verify memory. Regression test file /app/backend/tests/test_modernstad_api.py still passes untouched.",
+  "rca of the issue": "N/A - no issues found."
+}
