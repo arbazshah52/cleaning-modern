@@ -1,0 +1,111 @@
+{
+  "theme": "light",
+  "app_type": "hybrid_fullstack",
+  "brand": "Modernstäd.se",
+  "typography": {
+    "headings": "Outfit, sans-serif",
+    "body": "Manrope, sans-serif",
+    "rules": [
+      "Use Outfit for all headings to provide a premium, modern feel. Never use Inter or generic sans for headings.",
+      "Use Manrope for body text to ensure crisp legibility and Scandinavian minimalism.",
+      "Headings should use tight letter spacing (tracking-tight).",
+      "Avoid centering text excessively; rely on left-alignment for a modern structured flow."
+    ]
+  },
+  "colors": {
+    "hero_base": "#E0F2FE",
+    "hero_accent": "#3B82F6",
+    "background": "#FAFAFA",
+    "surface": "#FFFFFF",
+    "text_primary": "#1F2937",
+    "text_secondary": "#4B5563",
+    "primary": "#10B981",
+    "primary_hover": "#059669",
+    "border": "#E5E7EB",
+    "rules": [
+      "Hero uses a blue/white base for the cartoon aesthetic (matching the Alamy reference).",
+      "Main app/wizard uses off-white/warm white (#FAFAFA).",
+      "Accent color is soft green (#10B981) for buttons, active states, and success markers.",
+      "Typography is deep charcoal (#1F2937) for a premium, grounded feel."
+    ]
+  },
+  "visual_enhancers": {
+    "shadows": "shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+    "border_radius": {
+      "cards": "rounded-3xl",
+      "buttons": "rounded-full",
+      "inputs": "rounded-xl",
+      "images": "rounded-2xl"
+    },
+    "textures": [
+      "Sparkle and bubble SVG elements floating in the hero section.",
+      "Use Framer Motion to create slow, drifting parallax for floating objects in the background."
+    ]
+  },
+  "layouts": {
+    "hero": "Full-height (min-h-[90vh]), flex-col center. Headline 'Rent hem. Mer tid för dig.', Privat/Företag prominent choices. 5-item Trust bar at bottom. Utilize /modernstad-hero.png for the hero illustration and overlay parallax elements.",
+    "wizard": "Max-width container (max-w-6xl). 2-Column layout on desktop: Left column contains the 8-Step vertical or horizontal progress indicator and Active form card. Right column contains the Live Summary side-panel.",
+    "spacing": "Generous. Use p-8, p-12 for containers. gap-6 to gap-10 for grids."
+  },
+  "components_path": "src/components/ui",
+  "motion": {
+    "library": "framer-motion",
+    "style": "Premium and calm",
+    "rules": [
+      "Use smooth, soft transitions (e.g., ease: 'easeOut', duration: 0.5).",
+      "No bouncy/flashy animations. The feel must be high-end.",
+      "Implement parallax movement on scroll for hero background elements (bubbles, cleaners, sparkles).",
+      "Fade and slide-up (y: 20 -> 0) for wizard step transitions."
+    ]
+  },
+  "booking_wizard_details": {
+    "services": {
+      "Privat": [
+        "Hemstädning",
+        "Allmän städning",
+        "Engångsstädning",
+        "Återkommande städning"
+      ],
+      "Företag": [
+        "Kontorsstädning",
+        "Företagsstädning",
+        "Regelbunden städning",
+        "Specialstädning"
+      ]
+    },
+    "steps": [
+      "01 Uppgifter (Förnamn, Efternamn, Personnummer, Mobilnummer, E-post)",
+      "02 Adress (Gatuadress, Stad, Postnummer, Våning, Dörrkod)",
+      "03 RUT (Är du berättigad till RUT-avdrag? Ja/Nej + info-länk)",
+      "04 Städning (Vilket erbjudande, Antal timmar, Bostadens storlek, Hur ofta, Starttid)",
+      "05 Datum (Önskat datum, Alternativt datum)",
+      "06 Resa & faktura (Resezon, Faktureringsalternativ)",
+      "07 Övrigt (Meddelande, Vill du bli kontaktad viss dag/tid, Villkor, CAPTCHA)",
+      "08 Bekräfta (summary + Skicka bokning)"
+    ],
+    "pricing_logic": {
+      "Central Malmö": 0,
+      "Zone 1": 49,
+      "Zone 2": 99,
+      "Zone 3": 149,
+      "Zone 4": 199
+    }
+  },
+  "instructions_to_main_agent": [
+    "Write all React code in .js files, NOT .tsx. Use standard PropTypes or plain JS.",
+    "Implement the entire UI in Swedish as specified.",
+    "Use lucide-react for all standard icons.",
+    "For the hero section, use the provided public/modernstad-hero.png. Enhance it with floating sparkles/bubbles using framer-motion to create a parallax effect.",
+    "Build out the 8-step booking wizard with Framer Motion transitions.",
+    "Implement the live pricing summary which automatically updates based on travel zone and cleaning choices."
+  ],
+  "universal_guidelines_for_main_agent": [
+    "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='step-1-next').",
+    "DO NOT use complete transparent background in headers, overlays, or dropdowns. Apply backdrop-blur-xl with a semi-transparent background (bg-white/80).",
+    "Never apply universal 'transition: all' in CSS. Target specific properties.",
+    "Never use AI assistant Emoji characters (🤖🧠💭💡🔮🎯) for icons.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Ensure contrast ratios meet WCAG AA standards (deep charcoal text on off-white).",
+    "Mobile-first responsive design is mandatory."
+  ]
+}

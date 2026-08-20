@@ -1,0 +1,24 @@
+{
+  "summary": "Full backend + frontend test of Modernstäd.se cleaning booking app. Backend: 16/16 pytest cases pass covering catalog, quote (RUT logic, foretag no-RUT), booking POST/GET, and all rejection cases (terms, service, zone, hours-below-min, mismatched customerType, invalid email). Frontend: complete PRIVAT flow (Hemstädning, RUT ja, zone-2) submits to MS-XXXXXX confirmation with email delivered; complete FÖRETAG flow (Kontorsstädning, RUT nej) submits successfully with 0 SEK RUT discount as expected. Validation blocks empty steps, invalid personnummer format, invalid email, bad postnummer, wrong CAPTCHA, and unchecked terms. RUT step subtitle correctly explains that business services are not RUT-eligible. Summary total updates live when changing travel zone (0 -> 99 SEK). Mobile 390px has no horizontal overflow on home, service selector, or wizard.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_modernstad_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py stores full booking doc via db.bookings.insert_one(dict(doc)) then re-fetches with {\"_id\":0} to strip Mongo _id before returning - good pattern.",
+    "Frontend uses import.meta.env.REACT_APP_BACKEND_URL via Vite; keep alignment - do NOT reintroduce CRA/craco.",
+    "BookingCreate lacks server-side regex validation for personalNumber/postalCode/phone; relies on Zod on the client only. Not blocking, but a determined caller could POST looser strings. Consider adding server-side regex to match client validation.",
+    "Email delivery relies on Emergent Resend proxy; if it fails, emailSent=false but booking still saved and returned 200 (correct fail-open behavior).",
+    "Frontend does not currently expose booking lookup by reference in the UI; only the confirmation screen shows it. Not a bug per spec."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "No auth. delivered@resend.dev used for booking submissions per /app/memory/test_credentials.md.",
+  "seed_data_creation": "Two live bookings created via UI: MS-949D31 (Anna Andersson / hemstadning / zone-2 / RUT ja -> 438 SEK) and MS-5818EE (Bo Berg / kontorsstadning / RUT nej -> 590 SEK). Plus multiple pytest-created bookings.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL in frontend/.env: https://booking-staging-1.preview.emergentagent.com. Regression tests live in /app/backend/tests/test_modernstad_api.py (pytest, uses REACT_APP_BACKEND_URL env or falls back to frontend/.env). Note: the wrong-CAPTCHA + unchecked-terms path can appear 'stuck' if you re-click Nästa too quickly after check(); add a short (200-500ms) wait between check(terms) and click(next) to allow onTouched validation to settle."
+}
