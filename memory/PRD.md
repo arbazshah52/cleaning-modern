@@ -48,3 +48,15 @@ FastAPI + MongoDB (backend, /api prefix) + Emergent-managed Resend for confirmat
 - Företagsuppgifter i footern: arbazshah11@gmail.com, 0736200637, Org.nr 559391-4392.
 - Nya endpoints: GET /api/company, POST /api/fixed-quote, POST /api/ai/chat, POST /api/ai/bookings.
 - QA: 24/24 nya backendtester + 16/16 regression, hela AI-flödet i UI och mobil 390px – allt grönt.
+
+## Implemented – Omdömen + SEO/AEO (2026-06)
+- Omdömessektion på startsidan: 9 exempelomdömen med stjärnbetyg, snittbetyg (4,8) och tydlig
+  demo-notis (ska bytas mot verifierade kundomdömen före lansering).
+- FAQ-accordion med AEO-optimerade svar om pris, RUT, fastpris, områden och bokning.
+- SEO: unik title/description/canonical/OG/Twitter per route via useSeo-hook, index.html med
+  CleaningService- och WebSite-schema (org.nr, telefon, e-post, öppettider, tjänstekatalog),
+  FAQPage på startsidan samt Service + BreadcrumbList på /privat och /foretag.
+- AEO: robots.txt tillåter GPTBot, OAI-SearchBot, PerplexityBot, ClaudeBot m.fl. samt sitemap.xml.
+- Medvetet val: ingen aggregateRating/Review i structured data så länge omdömena är demoinnehåll.
+- QA: frontend 100 % (omdömen, FAQ, metadata per route, JSON-LD-städning vid navigering,
+  robots/sitemap, regression av bokning och AI-agent, mobil 390px).

@@ -2,7 +2,11 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { ArrowRight, User, Briefcase } from 'lucide-react';
 import Hero from '../components/Hero';
+import Reviews from '../components/Reviews';
+import Faq from '../components/Faq';
 import { servicesFor } from '../data/services';
+import { faqs } from '../data/faqs';
+import { useSeo, faqJsonLd } from '../lib/seo';
 
 const steps = [
   ['01', 'Välj tjänst', 'Privat eller företag – välj den städning som passar dig.'],
@@ -10,7 +14,17 @@ const steps = [
   ['03', 'Vi bekräftar', 'Du får en bekräftelse på e-post och vi hörs innan första städningen.'],
 ];
 
+const HOME_JSONLD = [faqJsonLd(faqs)];
+
 export default function Home() {
+  useSeo({
+    title: 'Städning i Malmö – Hemstädning med RUT | Modernstäd.se',
+    description:
+      'Hemstädning och kontorsstädning i Malmö, Lund och Trelleborg från 226 kr/tim, eller fastpris på kvadratmeter och rum. Vi sköter RUT-avdraget – boka online på två minuter.',
+    path: '/',
+    jsonLd: HOME_JSONLD,
+  });
+
   return (
     <div data-testid="home-page">
       <Hero />
@@ -99,8 +113,10 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-16 lg:px-10" data-testid="rut-section-home">
-        <div className="grain relative overflow-hidden rounded-4xl bg-sky-deep p-10 text-white lg:p-16">
+      <Reviews />
+      <Faq />
+
+      <section className="mx-auto max-w-7xl px-5 py-16 lg:px-10" data-testid="rut-section-home">        <div className="grain relative overflow-hidden rounded-4xl bg-sky-deep p-10 text-white lg:p-16">
           <div className="relative max-w-xl">
             <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-white/70">
               RUT-avdrag
