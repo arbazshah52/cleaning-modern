@@ -25,13 +25,13 @@ client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
 
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ["EMERGENT_EMAIL_KEY"]
-EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "Modernstäd.se"
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
-LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
-ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
-ADMIN_PHONE = os.environ["ADMIN_PHONE"]
-ORG_NUMBER = os.environ["ORG_NUMBER"]
+LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL") or "arbazshah11@gmail.com"
+ADMIN_PHONE = os.environ.get("ADMIN_PHONE") or "0736200637"
+ORG_NUMBER = os.environ.get("ORG_NUMBER") or "559391-4392"
 
 MAX_DISCOUNT_PCT = 10
 
@@ -108,14 +108,14 @@ class BookingCreate(BaseModel):
     serviceId: str
     firstName: str = Field(min_length=1, max_length=60)
     lastName: str = Field(min_length=1, max_length=60)
-    personalNumber: str = Field(min_length=6, max_length=20)
-    phone: str = Field(min_length=6, max_length=25)
+    personalNumber: str = Field(min_length=6, max_length=30)
+    phone: str = Field(min_length=6, max_length=30)
     email: EmailStr
-    street: str = Field(min_length=2, max_length=120)
-    city: str = Field(min_length=2, max_length=60)
-    postalCode: str = Field(min_length=4, max_length=10)
-    floor: Optional[str] = Field(default="", max_length=20)
-    doorCode: Optional[str] = Field(default="", max_length=20)
+    street: str = Field(min_length=2, max_length=160)
+    city: str = Field(min_length=2, max_length=80)
+    postalCode: str = Field(min_length=4, max_length=12)
+    floor: Optional[str] = Field(default="", max_length=80)
+    doorCode: Optional[str] = Field(default="", max_length=80)
     rut: bool = False
     hours: int = Field(ge=1, le=24)
     homeSize: str = Field(min_length=1, max_length=40)
@@ -126,7 +126,7 @@ class BookingCreate(BaseModel):
     travelZoneId: str
     invoiceOption: str = Field(min_length=1, max_length=60)
     message: Optional[str] = Field(default="", max_length=2000)
-    contactPreference: Optional[str] = Field(default="", max_length=200)
+    contactPreference: Optional[str] = Field(default="", max_length=300)
     termsAccepted: bool
 
     @field_validator("serviceId")
@@ -243,6 +243,9 @@ def _assert_safe_email(subject: str, html: str) -> None:
 
 
 async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
+    if not EMAIL_KEY:
+        logger.error("EMERGENT_EMAIL_KEY saknas – hoppar över e-postutskick")
+        return None
     _assert_safe_email(subject, html)
     payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
     if EMAIL_REPLY_TO:
@@ -366,6 +369,22 @@ async def create_booking(payload: BookingCreate):
     stored["emailSent"] = email_id is not None
     await notify_admin(stored, "Ny bokning via formuläret")
     return stored
+
+
+@api.get("/health")
+async def health():
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception as e:
+        logger.error(f"DB ping failed: {e}")
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "database": db_ok,
+        "emailConfigured": bool(EMAIL_KEY),
+        "aiConfigured": bool(LLM_KEY),
+    }
 
 
 @api.get("/company")
@@ -551,6 +570,11 @@ def _parse_ai(raw: str) -> dict:
 
 @api.post("/ai/chat")
 async def ai_chat(req: ChatRequest):
+    if not LLM_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="AI-agenten är inte konfigurerad (EMERGENT_LLM_KEY saknas).",
+        )
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     model = req.model if req.model in ALLOWED_MODELS else DEFAULT_MODEL
@@ -629,11 +653,11 @@ class AiBookingCreate(BaseModel):
     firstName: str = Field(min_length=1, max_length=60)
     lastName: str = Field(min_length=1, max_length=60)
     personalNumber: Optional[str] = ""
-    phone: str = Field(min_length=6, max_length=25)
+    phone: str = Field(min_length=6, max_length=30)
     email: EmailStr
-    street: str = Field(min_length=2, max_length=120)
-    postalCode: str = Field(min_length=4, max_length=10)
-    city: str = Field(min_length=2, max_length=60)
+    street: str = Field(min_length=2, max_length=160)
+    postalCode: str = Field(min_length=4, max_length=12)
+    city: str = Field(min_length=2, max_length=80)
     preferredDate: str
     startTime: Optional[str] = "Förmiddag (10–12)"
     message: Optional[str] = Field(default="", max_length=2000)

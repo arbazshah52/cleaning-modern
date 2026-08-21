@@ -97,7 +97,9 @@ export default function AiPriceAgent() {
       if (!res.ok) {
         const d = data?.detail;
         throw new Error(
-          typeof d === 'string' ? d : 'Uppgifterna är inte kompletta – fyll i dem i chatten.'
+          typeof d === 'string'
+            ? d
+            : `Bokningen kunde inte skapas (fel ${res.status}). Kontrollera uppgifterna i chatten.`
         );
       }
       setBooking(data);
