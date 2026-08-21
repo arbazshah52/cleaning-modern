@@ -9,6 +9,8 @@ type Msg = { role: 'user' | 'assistant'; content: string };
 
 const MODELS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
   { id: 'gpt-5.5', label: 'GPT-5.5' },
   { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro' },
 ];

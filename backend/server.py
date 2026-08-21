@@ -37,6 +37,8 @@ MAX_DISCOUNT_PCT = 10
 
 ALLOWED_MODELS = {
     "claude-sonnet-4-6": "anthropic",
+    "claude-opus-4-7": "anthropic",
+    "claude-haiku-4-5-20251001": "anthropic",
     "gpt-5.5": "openai",
     "gemini-3.1-pro-preview": "gemini",
 }
