@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Service } from '../data/services';
 import { zoneById } from '../data/travelZones';
-import { calculateQuote, sek } from '../data/prices';
+import { calculateQuote, sek, Quote } from '../data/prices';
 
 interface Props {
   values: any;
@@ -9,13 +9,51 @@ interface Props {
   compact?: boolean;
 }
 
+function Line({ label, value, tone = 'ink' }: { label: string; value: string; tone?: 'ink' | 'mint'; }) {
+  return (
+    <div className={`flex items-start justify-between gap-4 text-sm ${tone === 'mint' ? 'text-mint-dark' : ''}`}>
+      <span className={tone === 'mint' ? '' : 'text-muted'}>{label}</span>
+      <span className={`text-right font-semibold ${tone === 'mint' ? '' : 'text-ink'}`}>{value}</span>
+    </div>
+  );
+}
+
+function PriceBreakdown({ quote, hours }: { quote: Quote; hours: number }) {
+  return (
+    <div className="mt-6 space-y-2.5 border-t border-line pt-5 text-sm">
+      <div className="flex justify-between">
+        <span className="text-muted">
+          Arbetskostnad ({quote.pricePerHour} SEK × {hours})
+        </span>
+        <span className="font-semibold text-ink" data-testid="summary-labour">
+          {sek(quote.labourCost)}
+        </span>
+      </div>
+      {quote.rutApplied && (
+        <div className="flex justify-between text-mint-dark">
+          <span>RUT-avdrag (50 %)</span>
+          <span className="font-semibold" data-testid="summary-rut">
+            −{sek(quote.rutDiscount)}
+          </span>
+        </div>
+      )}
+      <div className="flex justify-between">
+        <span className="text-muted">Resekostnad</span>
+        <span className="font-semibold text-ink" data-testid="summary-travel">
+          {sek(quote.travelFee)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function BookingSummary({ values, service, compact = false }: Props) {
   const hours = Number(values.hours) || 0;
   const zone = zoneById(values.travelZoneId);
   const rut = values.rut === 'ja';
-  const q = calculateQuote(values.serviceId || service?.id || '', hours, values.travelZoneId, rut);
+  const quote = calculateQuote(values.serviceId || service?.id || '', hours, values.travelZoneId, rut);
 
-  const rows = [
+  const rows: [string, string][] = [
     ['Tjänst', service?.name ?? '–'],
     ['Antal timmar', hours ? `${hours} timmar` : '–'],
     ['Bostadens storlek', values.homeSize || '–'],
@@ -40,37 +78,17 @@ export default function BookingSummary({ values, service, compact = false }: Pro
       </h4>
 
       <div className="mt-6 space-y-2.5">
-        {rows.map(([k, v]) => (
-          <div key={k as string} className="flex items-start justify-between gap-4 text-sm">
-            <span className="text-muted">{k}</span>
-            <span className="text-right font-semibold text-ink">{v}</span>
-          </div>
+        {rows.map(([label, value]) => (
+          <Line key={label} label={label} value={value} />
         ))}
       </div>
 
-      <div className="mt-6 space-y-2.5 border-t border-line pt-5 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted">
-            Arbetskostnad ({q.pricePerHour} SEK × {hours || 0})
-          </span>
-          <span className="font-semibold text-ink" data-testid="summary-labour">{sek(q.labourCost)}</span>
-        </div>
-        {q.rutApplied && (
-          <div className="flex justify-between text-mint-dark">
-            <span>RUT-avdrag (50 %)</span>
-            <span className="font-semibold" data-testid="summary-rut">−{sek(q.rutDiscount)}</span>
-          </div>
-        )}
-        <div className="flex justify-between">
-          <span className="text-muted">Resekostnad</span>
-          <span className="font-semibold text-ink" data-testid="summary-travel">{sek(q.travelFee)}</span>
-        </div>
-      </div>
+      <PriceBreakdown quote={quote} hours={hours} />
 
       <div className="mt-5 flex items-baseline justify-between rounded-2xl bg-mint-soft px-5 py-4">
         <span className="font-display text-sm font-bold text-ink">Beräknat pris</span>
         <span className="font-display text-2xl font-extrabold text-mint-dark" data-testid="summary-total">
-          {sek(q.total)}
+          {sek(quote.total)}
         </span>
       </div>
       <p className="mt-3 text-xs text-muted">

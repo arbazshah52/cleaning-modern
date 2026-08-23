@@ -4,11 +4,11 @@ import { User, Briefcase, MapPin, Sparkles, ArrowRight } from 'lucide-react';
 import TrustBar from './TrustBar';
 
 const bubbles = [
-  { size: 26, top: '14%', left: '52%', delay: 0 },
-  { size: 14, top: '26%', left: '61%', delay: 1.4 },
-  { size: 40, top: '8%', left: '73%', delay: 0.6 },
-  { size: 18, top: '38%', left: '48%', delay: 2.1 },
-  { size: 22, top: '58%', left: '92%', delay: 1.1 },
+  { id: 'b1', size: 26, top: '14%', left: '52%', delay: 0 },
+  { id: 'b2', size: 14, top: '26%', left: '61%', delay: 1.4 },
+  { id: 'b3', size: 40, top: '8%', left: '73%', delay: 0.6 },
+  { id: 'b4', size: 18, top: '38%', left: '48%', delay: 2.1 },
+  { id: 'b5', size: 22, top: '58%', left: '92%', delay: 1.1 },
 ];
 
 export default function Hero() {
@@ -30,7 +30,7 @@ export default function Hero() {
 
       {bubbles.map((b, i) => (
         <motion.span
-          key={i}
+          key={b.id}
           className="pointer-events-none absolute hidden rounded-full border border-white/70 bg-white/40 lg:block"
           style={{ width: b.size, height: b.size, top: b.top, left: b.left }}
           animate={{ y: [0, -22, 0], opacity: [0.5, 0.95, 0.5] }}

@@ -13,10 +13,10 @@ import CleaningDetails from './steps/CleaningDetails';
 import DateSelection from './steps/DateSelection';
 import TravelInvoice from './steps/TravelInvoice';
 import OtherDetails from './steps/OtherDetails';
+import ConfirmStep from './steps/ConfirmStep';
 import { bookingSchema, stepFields } from '../lib/validation';
 import { createBooking } from '../lib/api';
 import { CustomerType, Service, serviceById } from '../data/services';
-import { StepHeader } from './fields';
 
 const STEP_LABELS = [
   'Uppgifter',
@@ -28,6 +28,35 @@ const STEP_LABELS = [
   'Övrigt',
   'Bekräfta',
 ];
+const CAPTCHA_STEP = 6;
+const LAST_STEP = STEP_LABELS.length - 1;
+
+const toPayload = (data: any, customerType: CustomerType) => ({
+  customerType,
+  serviceId: data.serviceId,
+  firstName: data.firstName,
+  lastName: data.lastName,
+  personalNumber: data.personalNumber,
+  phone: data.phone,
+  email: data.email,
+  street: data.street,
+  city: data.city,
+  postalCode: data.postalCode,
+  floor: data.floor || '',
+  doorCode: data.doorCode || '',
+  rut: data.rut === 'ja',
+  hours: Number(data.hours),
+  homeSize: data.homeSize,
+  frequency: data.frequency,
+  startTime: data.startTime,
+  preferredDate: data.preferredDate,
+  alternativeDate: data.alternativeDate || '',
+  travelZoneId: data.travelZoneId,
+  invoiceOption: data.invoiceOption,
+  message: data.message || '',
+  contactPreference: data.contactPreference || '',
+  termsAccepted: Boolean(data.termsAccepted),
+});
 
 interface Props {
   customerType: CustomerType;
@@ -79,64 +108,37 @@ export default function BookingWizard({ customerType, services, initialServiceId
   const values = watch();
   const service = serviceById(values.serviceId) ?? serviceById(initialServiceId);
 
+  const captchaFailed = (answer: unknown) => Number(answer) !== captcha.answer;
+
+  const goTo = (target: number) => {
+    setStep(target);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const next = async () => {
-    const ok = await trigger(stepFields[step] as any);
-    if (step === 6) {
-      if (Number(values.captcha) !== captcha.answer) {
-        setError('captcha', { message: 'Fel svar, försök igen' });
-        return;
-      }
+    const valid = await trigger(stepFields[step] as any);
+    if (step === CAPTCHA_STEP && captchaFailed(values.captcha)) {
+      setError('captcha', { message: 'Fel svar, försök igen' });
+      return;
     }
-    if (!ok) return;
+    if (!valid) return;
     if (service && step === 3 && Number(values.hours) < service.minimumHours) {
       setError('hours', { message: `Minst ${service.minimumHours} timmar för ${service.name}` });
       return;
     }
-    setStep((s) => Math.min(s + 1, STEP_LABELS.length - 1));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const back = () => {
-    setStep((s) => Math.max(s - 1, 0));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    goTo(Math.min(step + 1, LAST_STEP));
   };
 
   const submit = handleSubmit(async (data) => {
-    if (Number(data.captcha) !== captcha.answer) {
-      setStep(6);
+    if (captchaFailed(data.captcha)) {
+      goTo(CAPTCHA_STEP);
       setError('captcha', { message: 'Fel svar, försök igen' });
       return;
     }
     setSending(true);
     try {
-      const booking = await createBooking({
-        customerType,
-        serviceId: data.serviceId,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        personalNumber: data.personalNumber,
-        phone: data.phone,
-        email: data.email,
-        street: data.street,
-        city: data.city,
-        postalCode: data.postalCode,
-        floor: data.floor || '',
-        doorCode: data.doorCode || '',
-        rut: data.rut === 'ja',
-        hours: Number(data.hours),
-        homeSize: data.homeSize,
-        frequency: data.frequency,
-        startTime: data.startTime,
-        preferredDate: data.preferredDate,
-        alternativeDate: data.alternativeDate || '',
-        travelZoneId: data.travelZoneId,
-        invoiceOption: data.invoiceOption,
-        message: data.message || '',
-        contactPreference: data.contactPreference || '',
-        termsAccepted: true,
-      });
+      onDone(await createBooking(toPayload(data, customerType)));
       toast.success('Bokningen är skickad!');
-      onDone(booking);
     } catch (e: any) {
       toast.error(e.message || 'Något gick fel');
     } finally {
@@ -163,28 +165,7 @@ export default function BookingWizard({ customerType, services, initialServiceId
       errors={errors}
       captchaQuestion={`Hur mycket är ${captcha.a} + ${captcha.b}?`}
     />,
-    <div key="s" data-testid="step-confirm">
-      <StepHeader index="08" title="Bekräfta" subtitle="Kontrollera uppgifterna och skicka in din bokning." />
-      <div className="space-y-2.5 rounded-3xl bg-cream p-6 text-sm">
-        {[
-          ['Namn', `${values.firstName || ''} ${values.lastName || ''}`],
-          ['E-post', values.email],
-          ['Mobil', values.phone],
-          ['Adress', `${values.street || ''}, ${values.postalCode || ''} ${values.city || ''}`],
-          ['Faktura', values.invoiceOption],
-          ['Alternativt datum', values.alternativeDate || '–'],
-          ['Meddelande', values.message || '–'],
-        ].map(([k, v]) => (
-          <div key={k as string} className="flex justify-between gap-4">
-            <span className="text-muted">{k}</span>
-            <span className="text-right font-semibold text-ink">{(v as string) || '–'}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-6 lg:hidden">
-        <BookingSummary values={values} service={service} compact />
-      </div>
-    </div>,
+    <ConfirmStep key="s" values={values} service={service} />,
   ];
 
   return (
@@ -209,7 +190,7 @@ export default function BookingWizard({ customerType, services, initialServiceId
           <div className="mt-10 flex items-center justify-between gap-4 border-t border-line pt-7">
             <button
               type="button"
-              onClick={back}
+              onClick={() => goTo(Math.max(step - 1, 0))}
               disabled={step === 0}
               data-testid="wizard-back-btn"
               className="inline-flex items-center gap-2 rounded-full border border-line px-5 py-3 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-cream disabled:opacity-40"
@@ -217,7 +198,7 @@ export default function BookingWizard({ customerType, services, initialServiceId
               <ArrowLeft className="h-4 w-4" /> Tillbaka
             </button>
 
-            {step < STEP_LABELS.length - 1 ? (
+            {step < LAST_STEP ? (
               <button
                 type="button"
                 onClick={next}

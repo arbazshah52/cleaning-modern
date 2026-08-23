@@ -215,15 +215,7 @@ class _EmailScan(HTMLParser):
             self._href, self._text = None, []
 
 
-def _assert_safe_email(subject: str, html: str) -> None:
-    scan = _EmailScan()
-    scan.feed(html)
-    if scan.tags & {"form", "input", "textarea", "select"}:
-        raise ValueError("No forms or input fields in email (G2)")
-    body = f"{subject}\n{html}".lower()
-    for p in _CRED_ASK:
-        if p in body:
-            raise ValueError(f"Email asks the recipient for credentials: {p!r} (G2)")
+def _check_email_links(scan: "_EmailScan") -> None:
     for url in scan.urls:
         low = url.strip().lower()
         if low.startswith(("mailto:", "tel:", "cid:", "#")):
@@ -233,6 +225,9 @@ def _assert_safe_email(subject: str, html: str) -> None:
         host = urlparse(low).hostname or ""
         if not _host_ok(host) or urlparse(low).username is not None:
             raise ValueError(f"Shortened, numeric-host or credential-bearing URL: {url!r} (G3)")
+
+
+def _check_email_anchors(scan: "_EmailScan") -> None:
     for href, text in scan.anchors:
         real = urlparse(href.strip().lower()).hostname or ""
         if not real:
@@ -240,6 +235,23 @@ def _assert_safe_email(subject: str, html: str) -> None:
         for m in _HOSTISH.finditer(text):
             if not _same_site(m.group(1).lower(), real):
                 raise ValueError(f"Anchor text {m.group(1)!r} ≠ real link host {real!r} (G3)")
+
+
+def _check_email_body(subject: str, html: str, scan: "_EmailScan") -> None:
+    if scan.tags & {"form", "input", "textarea", "select"}:
+        raise ValueError("No forms or input fields in email (G2)")
+    body = f"{subject}\n{html}".lower()
+    for p in _CRED_ASK:
+        if p in body:
+            raise ValueError(f"Email asks the recipient for credentials: {p!r} (G2)")
+
+
+def _assert_safe_email(subject: str, html: str) -> None:
+    scan = _EmailScan()
+    scan.feed(html)
+    _check_email_body(subject, html, scan)
+    _check_email_links(scan)
+    _check_email_anchors(scan)
 
 
 async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
@@ -550,16 +562,21 @@ class ChatRequest(BaseModel):
 
 
 def _parse_ai(raw: str) -> dict:
+    fallback = {"reply": raw.strip(), "offer": None, "details": {}, "readyToBook": False}
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*\n?|```$", "", text).strip()
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
-        return {"reply": text, "offer": None, "details": {}, "readyToBook": False}
+        return fallback
+    data: Optional[dict] = None
     try:
-        data = json.loads(text[start:end + 1])
+        loaded = json.loads(text[start:end + 1])
+        data = loaded if isinstance(loaded, dict) else None
     except json.JSONDecodeError:
-        return {"reply": text, "offer": None, "details": {}, "readyToBook": False}
+        data = None
+    if data is None:
+        return fallback
     return {
         "reply": data.get("reply") or "",
         "offer": data.get("offer") or None,
@@ -568,52 +585,36 @@ def _parse_ai(raw: str) -> dict:
     }
 
 
-@api.post("/ai/chat")
-async def ai_chat(req: ChatRequest):
-    if not LLM_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="AI-agenten är inte konfigurerad (EMERGENT_LLM_KEY saknas).",
-        )
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-    model = req.model if req.model in ALLOWED_MODELS else DEFAULT_MODEL
-    provider = ALLOWED_MODELS[model]
-    session_id = req.sessionId or str(uuid.uuid4())
-
-    session = await db.ai_sessions.find_one({"session_id": session_id}, {"_id": 0})
-    history: list = session["messages"] if session else []
-
+def _chat_system_message(customer_type: str, history: list) -> str:
     transcript = "\n".join(
         f'{"Kund" if m["role"] == "user" else "Stella"}: {m["content"]}' for m in history[-16:]
     )
-    system = (
-        f'{_system_prompt()}\n\nKundtyp: {req.customerType}.'
+    return (
+        f'{_system_prompt()}\n\nKundtyp: {customer_type}.'
         + (f'\n\nTidigare konversation:\n{transcript}' if transcript else "")
     )
 
-    chat = LlmChat(api_key=LLM_KEY, session_id=session_id, system_message=system).with_model(
-        provider, model
-    )
-    try:
-        raw = await chat.send_message(UserMessage(text=req.message))
-    except Exception as e:
-        logger.error(f"AI error: {e}")
-        raise HTTPException(status_code=502, detail="AI-agenten är inte tillgänglig just nu.")
 
-    parsed = _parse_ai(raw if isinstance(raw, str) else str(raw))
-    offer = parsed["offer"] or {}
-    price = None
-    if offer.get("sqm") and offer.get("rooms"):
-        price = fixed_quote(
-            req.customerType,
+def _price_from_offer(customer_type: str, offer: dict) -> Optional[dict]:
+    if not (offer.get("sqm") and offer.get("rooms")):
+        return None
+    try:
+        return fixed_quote(
+            customer_type,
             int(offer["sqm"]),
             int(offer["rooms"]),
             offer.get("travelZoneId") or "central-malmo",
             bool(offer.get("rut")),
             float(offer.get("discountPct") or 0),
         )
+    except (TypeError, ValueError) as e:
+        logger.error(f"Ogiltigt AI-erbjudande: {offer} ({e})")
+        return None
 
+
+async def _store_turn(
+    session_id: str, req: "ChatRequest", model: str, parsed: dict, offer: dict
+) -> None:
     now = datetime.now(timezone.utc).isoformat()
     await db.ai_sessions.update_one(
         {"session_id": session_id},
@@ -629,6 +630,42 @@ async def ai_chat(req: ChatRequest):
         },
         upsert=True,
     )
+
+
+async def _ask_agent(model: str, session_id: str, system: str, message: str) -> str:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    chat = LlmChat(api_key=LLM_KEY, session_id=session_id, system_message=system).with_model(
+        ALLOWED_MODELS[model], model
+    )
+    try:
+        raw = await chat.send_message(UserMessage(text=message))
+    except Exception as e:
+        logger.error(f"AI error: {e}")
+        raise HTTPException(status_code=502, detail="AI-agenten är inte tillgänglig just nu.")
+    return raw if isinstance(raw, str) else str(raw)
+
+
+@api.post("/ai/chat")
+async def ai_chat(req: ChatRequest):
+    if not LLM_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="AI-agenten är inte konfigurerad (EMERGENT_LLM_KEY saknas).",
+        )
+
+    model = req.model if req.model in ALLOWED_MODELS else DEFAULT_MODEL
+    session_id = req.sessionId or str(uuid.uuid4())
+    session = await db.ai_sessions.find_one({"session_id": session_id}, {"_id": 0})
+    history: list = session["messages"] if session else []
+
+    raw = await _ask_agent(
+        model, session_id, _chat_system_message(req.customerType, history), req.message
+    )
+    parsed = _parse_ai(raw)
+    offer = parsed["offer"] or {}
+    price = _price_from_offer(req.customerType, offer)
+    await _store_turn(session_id, req, model, parsed, offer)
 
     return {
         "sessionId": session_id,

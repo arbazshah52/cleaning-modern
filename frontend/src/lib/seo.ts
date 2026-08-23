@@ -50,7 +50,9 @@ export function useSeo({ title, description, path, jsonLd = [] }: Seo) {
       return s;
     });
     return () => nodes.forEach((n) => n.remove());
-  }, [title, description, path, jsonLd]);
+    // jsonLd is compared by serialised value so inline arrays cannot thrash the head
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, description, path, JSON.stringify(jsonLd)]);
 }
 
 export const faqJsonLd = (faqs: { q: string; a: string }[]) => ({

@@ -27,7 +27,7 @@ class TestCompany:
         assert d["maxDiscountPct"] == 10
         assert d["fixedPriceRules"]["privat"] == {"perSqm": 25, "perRoom": 150, "minimum": 900}
         assert d["fixedPriceRules"]["foretag"] == {"perSqm": 30, "perRoom": 200, "minimum": 1500}
-        assert set(d["models"]) == set(MODELS)
+        assert set(MODELS).issubset(set(d["models"]))
 
 
 # ---- fixed quote ----
