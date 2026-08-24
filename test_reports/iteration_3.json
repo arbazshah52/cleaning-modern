@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only verification of the reviews + FAQ + SEO/AEO iteration on Modernstäd.se. All 7 requested feature groups verified via Playwright against the public URL (Vite + TS on port 3000). No functional regressions observed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_behaviour": {
+    "reviews_section": "9/9 review cards render (r1..r9), stars visible per card, average badge shows 4,8 baserat på 9 omdömen, demo disclaimer note visible via data-testid=reviews-demo-note.",
+    "faq_accordion": "faq-section renders 8 items. faq-answer-0 open by default. Clicking faq-toggle-2 opens faq-answer-2; clicking again collapses it (count goes 1 -> 0).",
+    "seo_meta_per_route": "document.title, meta description, canonical, og:url and twitter:title/description all update between /, /privat, /foretag. Titles observed: 'Städning i Malmö – Hemstädning med RUT | Modernstäd.se' (home), 'Hemstädning Malmö med RUT-avdrag från 226 kr/tim | Modernstäd.se' (privat), 'Kontorsstädning & företagsstädning i Malmö | Modernstäd.se' (foretag). Canonicals and og:url match each route.",
+    "structured_data_home": "3 JSON-LD blocks parse cleanly: CleaningService, WebSite, FAQPage. CleaningService fields verified: taxID=559391-4392, telephone=+46736200637, email=arbazshah11@gmail.com.",
+    "structured_data_privat_foretag": "Both /privat and /foretag show 4 JSON-LD blocks: static CleaningService + WebSite (from index.html) plus injected Service + BreadcrumbList. All parse-able.",
+    "cleanup_on_navigation": "Navigating back to / removes previous route's Service/BreadcrumbList and re-injects FAQPage. Home ends with exactly [CleaningService, WebSite, FAQPage] (no stale duplicates).",
+    "robots_txt": "GET /robots.txt returns 200 and includes Sitemap plus Allow rules for GPTBot, PerplexityBot, ClaudeBot (also OAI-SearchBot, ChatGPT-User, Google-Extended, Bingbot).",
+    "sitemap_xml": "GET /sitemap.xml returns 200 with entries for /, /privat, /foretag (valid XML urlset).",
+    "regression_wizard_and_ai": "/privat renders booking-flow-privat wizard and ai-agent-toggle. Opening AI panel loads Stella prisagent with intro copy and input; hero + PRIVAT/FÖRETAG nav still functional. No new console errors.",
+    "mobile_390": "No horizontal overflow at 390px (documentElement.scrollWidth == innerWidth == 390). Reviews and FAQ sections both fit within viewport width."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "seo.ts useSeo deps include the jsonLd array reference; on Home the array is defined at module scope (HOME_JSONLD = [faqJsonLd(faqs)]) so identity is stable and cleanup works correctly. If a future page inlines the array literal in the hook call, the effect will re-run every render and thrash the head. Consider useMemo/module-scope constants going forward.",
+    "Static index.html JSON-LD (CleaningService, WebSite) persists across route changes, which is fine, but the useSeo cleanup only removes scripts it created (dataset.seo='page'). Good separation – keep this invariant.",
+    "sitemap.xml lacks <lastmod> entries; not a bug, but adding lastmod improves crawl freshness signals.",
+    "Reviews are correctly labelled as demo and no aggregateRating/Review JSON-LD is emitted, aligning with the intent to avoid misleading structured data."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "test_credentials": "n/a",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 verified reviews/FAQ/SEO+AEO on the public preview URL. Reviews component uses data-testid=reviews-section/reviews-average/review-card-r1..r9/reviews-demo-note; FAQ uses faq-section/faq-item-{i}/faq-toggle-{i}/faq-answer-{i}. useSeo cleans up only its own injected JSON-LD via dataset.seo='page'. Home injects FAQPage; /privat and /foretag inject Service+BreadcrumbList. Static CleaningService+WebSite live in index.html. robots.txt and sitemap.xml served from /app/frontend/public. No backend changes tested (per request).",
+  "rca of the issue": "No issues found."
+}

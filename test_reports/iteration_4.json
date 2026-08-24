@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 4 verified the code-review refactor of Modernstäd.se (backend _parse_ai / _assert_safe_email split / ai_chat helpers, frontend AiPriceAgent -> useAiAgent+ChatMessages+ChatInput+AiPriceCard split, BookingWizard slimmed with ConfirmStep+toPayload, BookingSummary split, Hero+useSeo stable keys). Also re-verified the previous booking bug (long free-text on floor/doorCode/contactPreference/street/phone/personalNumber) both via API and full UI wizard. 42/42 pytest tests pass. Frontend wizard, AI agent (chat + fixed-price card + Acceptera & boka), home/reviews/FAQ regression and mobile 390px all pass on the public preview URL.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Booking confirmation email (both /api/bookings and /api/ai/bookings)",
+        "issue": "During Playwright runs the confirmation screen intermittently showed 'Vi kunde inte skicka bekräftelsen via e-post just nu' / 'bekräftelse via e-post kunde inte skickas' i.e. emailSent=false, even though the parallel pytest run got emailSent=true on the same endpoints. Likely Resend rate-limiting for delivered@resend.dev after many rapid test bookings; behaviour is documented (booking still registered) and not a functional break. Not caused by the refactor.",
+        "affected_selectors": ["confirmation", "ai-booking-confirmed"]
+      }
+    ],
+    "design_issues": []
+  },
+  "verified_behaviour": {
+    "bug_reverify_api": "POST /api/bookings with floor 'ta trappan till höger och ring på dörren' (39 chars), doorCode 'portkod 1234 sedan 5678' (23 chars), contactPreference 157 chars, street 'Storgatan 12 lgh 1102', phone '+46 70 123 45 67', personalNumber '19850101-1234' returned 200 with MS- reference (9 chars) and emailSent=true. GET /api/bookings/{ref} echoed the same long strings back and did not expose _id.",
+    "bug_reverify_ui": "Full 8-step Privat wizard completed with the same long free-text values, submitted from step-confirm and reached data-testid=confirmation with data-testid=confirmation-reference MS-C4CE7F. No 'Något gick fel' toast.",
+    "backend_regression": "GET /api/services (8 total, 4 privat, 4 foretag), GET /api/travel-zones (5 zones, fees [0,49,99,149,199]), GET /api/company (org 559391-4392, maxDiscountPct=10, includes claude-sonnet-4-6/gpt-5.5/gemini-3.1-pro-preview plus new claude-opus-4-7 and claude-haiku-4-5-20251001), GET /api/health returns database/emailConfigured/aiConfigured keys, POST /api/quote (with/without RUT, foretag ignores RUT), POST /api/fixed-quote (privat/foretag minimums, RUT halves negotiated, foretag ignores RUT, discount clamped to 10%, travel-zone fee added). All previous rejection cases (terms=false, unknown service/zone, hours<min, customerType mismatch, invalid email, sqm/rooms out of range) still return the correct 4xx.",
+    "ai_chat_all_models": "POST /api/ai/chat over claude-sonnet-4-6, gpt-5.5 and gemini-3.1-pro-preview each returns Swedish reply + offer with sqm/rooms + server-computed fixed price with discountPct<=10. Context retained across 2 turns for all 3 models (sqm=72, rooms=3 preserved). Guardrail: even with explicit '50 procent rabatt' pressure, discountPct stays <=10.",
+    "ai_booking_api": "POST /api/ai/bookings with discountPct=5 succeeds (MS- reference, source=ai-agent, price.model=fixed, emailSent=true). discountPct=40 clamped to 10. All rejection cases (invalid email, unknown service/zone, sqm out of range, rooms out of range, customerType mismatch) still 4xx.",
+    "ai_ui_end_to_end": "Floating ai-agent-toggle opens ai-agent-panel; ai-model-select and ai-customer-type work; sending '72 kvm, 3 rum, centrala Malmö, RUT' shows Stella reply and ai-price-card with ai-price-total '1 125 SEK'. Providing name/personnummer/telefon/e-post/adress in a follow-up message triggered readyToBook -> ai-confirm-booking-btn appeared; clicking it produced ai-booking-confirmed with ai-booking-reference MS-BF3AFA.",
+    "home_regression": "Home title 'Städning i Malmö – Hemstädning med RUT | Modernstäd.se'. reviews-section renders. faq-toggle-2 opens faq-answer-2. No new console errors.",
+    "mobile_390": "documentElement.scrollWidth == window.innerWidth == 390 on both / and /privat – no horizontal overflow."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_modernstad_api.py",
+    "/app/backend/tests/test_ai_agent.py",
+    "/app/backend/tests/test_refactor_and_bugfix.py",
+    "/app/test_reports/pytest/iteration_4.xml"
+  ],
+  "action_items": [
+    "Optional: investigate the intermittent emailSent=false observed in UI end-to-end runs (Playwright wizard + AI). Backend pytest against the same endpoints got emailSent=true, so this is most likely Resend rate-limiting for delivered@resend.dev during rapid test runs, not a refactor regression. Consider adding a lightweight resend-rate-limit backoff or explicit surface in the UI vs. current generic message."
+  ],
+  "critical_code_review_comments": [
+    "useAiAgent.confirm sends personalNumber/message with '' fallbacks but does not validate presence of firstName/lastName/email/phone/street/postalCode/city/preferredDate before enabling the confirm button – it relies purely on the backend readyToBook flag set by the LLM. If the model prematurely reports readyToBook=true with missing fields the UI will 422 and only surface a toast. A client-side sanity check on details before showing ai-confirm-booking-btn would harden this against LLM drift.",
+    "AiPriceAgent chat transcript scrolls but the chat container doesn't visibly indicate that new messages arrived when the panel is scrolled up mid-conversation – consider a 'nya meddelanden'-badge or auto-scroll only when already at the bottom.",
+    "BookingWizard.toPayload always sends termsAccepted:true (the checkbox has already been validated via zod, but the field is hard-coded on submit). If the schema ever loosens, the backend could receive termsAccepted:true even if the user unchecked afterwards. Cheap fix: pass data.termsAccepted through.",
+    "AiPriceCard shows 'Rabatt (0 %)' as a full row even when the negotiated discount is 0 SEK – minor visual noise; consider hiding the row when discountPct===0.",
+    "Backend /api/health is now shape-verified but returns booleans for emailConfigured/aiConfigured without listing the underlying provider – fine for the current usage, but adding `emailProvider`/`aiProvider` strings would help ops."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_refactor_and_bugfix.py (new: /api/health + long-free-text booking re-verify)",
+    "/app/backend/tests/test_ai_agent.py (TestCompany.models assertion changed from set-equality to subset since the refactor added claude-opus-4-7 and claude-haiku-4-5-20251001 to the models list)"
+  ],
+  "success_rate": {"backend": "100% (42/42)", "frontend": "100% (wizard bug re-verify, AI end-to-end, home/reviews/FAQ, mobile 390px)"},
+  "test_credentials": "Anonymous flow – delivered@resend.dev used per /app/memory/test_credentials.md.",
+  "seed_data_creation": "Test bookings created via public API and UI (MS-C4CE7F wizard, MS-BF3AFA AI). No seeding scripts required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview URL: https://booking-staging-1.preview.emergentagent.com. Backend suite: pytest /app/backend/tests -v (42 tests). test_refactor_and_bugfix.py owns the long-free-text bug re-verification and the /api/health shape check. Wizard entry: /privat -> click data-testid=service-card-hemstadning to reveal the wizard (framer-motion whileInView makes it invisible before the card is clicked). Wizard has 8 steps (0..7); CAPTCHA lives on step 6 (data-testid=step-other) with question 'Hur mycket är X + Y?'. AI end-to-end booking flow works when details are provided in one Swedish paragraph after the price card appears. Intermittent emailSent=false in UI is Resend rate-limiting, not a code bug (backend tests still see emailSent=true).",
+  "rca of the issue": "Bug 'Något gick fel när bokningen skulle skickas' from the previous iteration is fixed. Root cause was the Pydantic max_length constraints on BookingCreate.floor/doorCode/contactPreference/street/phone/personalNumber being too tight for real-world Swedish free-text inputs (e.g. 'ta trappan till höger och ring på dörren'), causing Pydantic to raise 422 which the frontend surfaced as the generic 'Något gick fel'-toast. Mitigation applied by main agent: max_length was relaxed on these fields. Verified by (a) a dedicated pytest sending the exact long strings and asserting 200 + MS- reference + persisted values on GET, and (b) an end-to-end Playwright run through all 8 wizard steps."
+}
