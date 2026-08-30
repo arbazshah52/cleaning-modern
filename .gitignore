@@ -87,3 +87,5 @@ android-sdk/
 !.env.example
 *.secret
 *.key
+.backend/.env 
+.Frontend/.env 
