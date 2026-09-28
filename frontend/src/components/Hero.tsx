@@ -2,6 +2,7 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { User, Briefcase, MapPin, Sparkles, ArrowRight } from 'lucide-react';
 import TrustBar from './TrustBar';
+import CleaningTurntable from './CleaningTurntable';
 
 const bubbles = [
   { id: 'b1', size: 26, top: '14%', left: '52%', delay: 0 },
@@ -136,10 +137,8 @@ export default function Hero() {
           transition={{ duration: 0.9, ease: 'easeOut' }}
           className="relative"
         >
-          <img
-            src="/hero-cleaners.jpg"
-            alt="Tecknade städare som städar ett skandinaviskt vardagsrum"
-            className="w-full rounded-4xl object-cover shadow-lift"
+          <CleaningTurntable
+            className="rounded-4xl shadow-lift"
             data-testid="hero-illustration"
           />
         </motion.div>
@@ -149,3 +148,4 @@ export default function Hero() {
     </section>
   );
 }
+
