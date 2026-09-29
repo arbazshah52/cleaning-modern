@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import ServiceSelector from '../components/ServiceSelector';
 import BookingWizard from '../components/BookingWizard';
 import Confirmation from '../components/Confirmation';
+import CleaningTurntable from './CleaningTurntable';
 import { CustomerType, Service, servicesFor } from '../data/services';
 
 interface Props {
@@ -43,14 +44,17 @@ export default function BookingFlow({
             <h1 className="text-4xl font-extrabold leading-tight text-ink sm:text-5xl">{heading}</h1>
             <p className="mt-4 max-w-md text-base text-muted">{subheading}</p>
           </motion.div>
-          <motion.img
-            src={image}
-            alt=""
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
-            className="ml-auto w-full max-w-md rounded-4xl shadow-lift"
-          />
+            className="ml-auto w-full max-w-md overflow-hidden rounded-4xl shadow-lift"
+          >
+            <CleaningTurntable
+              variant={customerType === 'foretag' ? 'foretag' : 'privat'}
+              bookTo={customerType === 'foretag' ? '/foretag' : '/privat'}
+            />
+          </motion.div>
         </div>
       </section>
 
